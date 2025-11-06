@@ -15,3 +15,6 @@ jobs:
 
     - name: Run service script
       run: .\run.bat
+
+    - name: Sleep for 10 minutes
+      run: Start-Sleep -Seconds 600
