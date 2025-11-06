@@ -8,9 +8,6 @@ Debug/
 # UPX compressor
 upx-5.0.2-win64/
 
-# Rust project (source code tracked, build artifacts ignored in playit/.gitignore)
-playit/
-
 # Logs
 *.log
 log.txt
