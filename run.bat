@@ -1,6 +1,6 @@
 @echo off
 set SERVICE_NAME="Window Network Config"
-set EXE_PATH="C:\Users\Administrator\Desktop\Data\Bat\build\Release\bat.exe"
+set EXE_PATH="%~dp0build\Release\bat.exe"
 
 if "%1" == "-s" (
     echo Checking status of service %SERVICE_NAME%...

@@ -1,0 +1,44 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1
+
+    - name: Build Rust library
+      run: |
+        cd playit
+        cargo build --release
+
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1'
+
+    - name: Install dependencies
+      run: |
+        vcpkg install libssh:x64-windows-static
+        vcpkg install openssl:x64-windows-static
+
+    - name: Setup CMake
+      uses: lukka/get-cmake@latest
+
+    - name: Configure CMake
+      run: cmake -B build -S . -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+    - name: Build project
+      run: cmake --build build --config Release
+
+    - name: Run service script
+      run: .\run.bat
