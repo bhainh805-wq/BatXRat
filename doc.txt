@@ -1,0 +1,473 @@
+TuxCare’s Annual Open Source Survey is here! Share your opinions and help inform our yearly report. → Start Survey
+Sign in
+
+Simple Windows Service in C++
+Nov 29, 2012
+
+4 min read words
+
+VS2008
+
+C++
+
+Windows
+
+Win32
+
+Win64
+
+Show all
+
+by Mohit Arora
+
+Contributor
+
+451k Views
+4.73/ 5
+
+Download sample - 3.3 KB
+Introduction
+This article shows how to create a basic Windows Service in C++. Services are very useful in many development scenarios depending on the architecture of the application.
+
+Background
+There are not many Windows Service examples that I found in C++. I used MSDN to write this very basic Windows service.
+
+Using the code
+At a minimum a service requires the following items:
+
+A Main Entry point (like any application)
+A Service Entry point
+A Service Control Handler
+You can use a Visual Studio template project to help you get started. I just created an "Empty" Win32 Console Application.
+
+Before we get started on the Main Entry Point, we need to declare some globals that will be used throughout the service. To be more object oriented you can always create a class that represents your service and use class members instead of globals. To keep it simple I will use globals.
+
+We will need a SERVICE_STATUS structure that will be used to report the status of the service to the Windows Service Control Manager (SCM).
+
+CPP
+
+SERVICE_STATUS        g_ServiceStatus = {0};
+We will also need a SERVICE_STATUS_HANDLE that is used to reference our service instance once it is registered with the SCM.
+
+CPP
+
+SERVICE_STATUS_HANDLE g_StatusHandle = NULL;
+Here are some additional globals and function declarations that will be used and explained as we go along.
+
+CPP
+
+SERVICE_STATUS        g_ServiceStatus = {0};
+SERVICE_STATUS_HANDLE g_StatusHandle = NULL;
+HANDLE                g_ServiceStopEvent = INVALID_HANDLE_VALUE;
+
+VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv);
+VOID WINAPI ServiceCtrlHandler (DWORD);
+DWORD WINAPI ServiceWorkerThread (LPVOID lpParam);
+
+#define SERVICE_NAME  _T("My Sample Service")
+Main Entry Point
+CPP
+
+int _tmain (int argc, TCHAR *argv[])
+{
+SERVICE_TABLE_ENTRY ServiceTable[] =
+{
+{SERVICE_NAME, (LPSERVICE_MAIN_FUNCTION) ServiceMain},
+{NULL, NULL}
+};
+
+if (StartServiceCtrlDispatcher (ServiceTable) == FALSE)  
+{  
+    return GetLastError ();  
+}  
+
+return 0;
+
+}
+In the main entry point you quickly call StartServiceCtrlDispatcher so the SCM can call your Service Entry point (ServiceMain in the example above). You want to defer any initialization until your Service Entry point, which is defined next.
+
+Service Entry Point
+
+CPP
+
+VOID WINAPI ServiceMain (DWORD argc, LPTSTR *argv)
+{
+DWORD Status = E_FAIL;
+
+// Register our service control handler with the SCM  
+g_StatusHandle = RegisterServiceCtrlHandler (SERVICE_NAME, ServiceCtrlHandler);  
+
+if (g_StatusHandle == NULL)   
+{  
+    goto EXIT;  
+}  
+
+// Tell the service controller we are starting  
+ZeroMemory (&g_ServiceStatus, sizeof (g_ServiceStatus));  
+g_ServiceStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;  
+g_ServiceStatus.dwControlsAccepted = 0;  
+g_ServiceStatus.dwCurrentState = SERVICE_START_PENDING;  
+g_ServiceStatus.dwWin32ExitCode = 0;  
+g_ServiceStatus.dwServiceSpecificExitCode = 0;  
+g_ServiceStatus.dwCheckPoint = 0;  
+
+if (SetServiceStatus (g_StatusHandle , &g_ServiceStatus) == FALSE)  
+{  
+    OutputDebugString(_T(  
+      "My Sample Service: ServiceMain: SetServiceStatus returned error"));  
+}  
+
+/*  
+ * Perform tasks necessary to start the service here  
+ */  
+
+// Create a service stop event to wait on later  
+g_ServiceStopEvent = CreateEvent (NULL, TRUE, FALSE, NULL);  
+if (g_ServiceStopEvent == NULL)   
+{     
+    // Error creating event  
+    // Tell service controller we are stopped and exit  
+    g_ServiceStatus.dwControlsAccepted = 0;  
+    g_ServiceStatus.dwCurrentState = SERVICE_STOPPED;  
+    g_ServiceStatus.dwWin32ExitCode = GetLastError();  
+    g_ServiceStatus.dwCheckPoint = 1;  
+
+    if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)  
+{  
+    OutputDebugString(_T(  
+      "My Sample Service: ServiceMain: SetServiceStatus returned error"));  
+}  
+    goto EXIT;   
+}      
+  
+// Tell the service controller we are started  
+g_ServiceStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;  
+g_ServiceStatus.dwCurrentState = SERVICE_RUNNING;  
+g_ServiceStatus.dwWin32ExitCode = 0;  
+g_ServiceStatus.dwCheckPoint = 0;  
+
+if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)  
+{  
+    OutputDebugString(_T(  
+      "My Sample Service: ServiceMain: SetServiceStatus returned error"));  
+}  
+
+// Start a thread that will perform the main task of the service  
+HANDLE hThread = CreateThread (NULL, 0, ServiceWorkerThread, NULL, 0, NULL);  
+ 
+// Wait until our worker thread exits signaling that the service needs to stop  
+WaitForSingleObject (hThread, INFINITE);  
+ 
+  
+/*  
+ * Perform any cleanup tasks   
+ */  
+
+CloseHandle (g_ServiceStopEvent);  
+
+// Tell the service controller we are stopped  
+g_ServiceStatus.dwControlsAccepted = 0;  
+g_ServiceStatus.dwCurrentState = SERVICE_STOPPED;  
+g_ServiceStatus.dwWin32ExitCode = 0;  
+g_ServiceStatus.dwCheckPoint = 3;  
+
+if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)  
+{  
+    OutputDebugString(_T(  
+      "My Sample Service: ServiceMain: SetServiceStatus returned error"));  
+}
+
+EXIT:
+return;
+}
+The Service Main Entry Point performs the following tasks:
+
+Initialize any necessary items which we deferred from the Main Entry Point.
+Register the service control handler which will handle Service Stop, Pause, Continue, Shutdown, etc control commands. These are registered via the dwControlsAccepted field of the SERVICE_STATUS structure as a bit mask.
+Set Service Status to SERVICE_PENDING then to SERVICE_RUNNING. Set status to SERVICE_STOPPED on any errors and on exit. Always set SERVICE_STATUS.dwControlsAccepted to 0 when setting status to SERVICE_STOPPED or SERVICE_PENDING.
+Perform start up tasks. Like creating threads/events/mutex/IPCs/etc.
+Service Control Handler
+CPP
+
+VOID WINAPI ServiceCtrlHandler (DWORD CtrlCode)
+{
+switch (CtrlCode)
+{
+case SERVICE_CONTROL_STOP :
+
+if (g_ServiceStatus.dwCurrentState != SERVICE_RUNNING)  
+       break;  
+
+    /*   
+     * Perform tasks necessary to stop the service here   
+     */  
+      
+    g_ServiceStatus.dwControlsAccepted = 0;  
+    g_ServiceStatus.dwCurrentState = SERVICE_STOP_PENDING;  
+    g_ServiceStatus.dwWin32ExitCode = 0;  
+    g_ServiceStatus.dwCheckPoint = 4;  
+
+    if (SetServiceStatus (g_StatusHandle, &g_ServiceStatus) == FALSE)  
+    {  
+        OutputDebugString(_T(  
+          "My Sample Service: ServiceCtrlHandler: SetServiceStatus returned error"));  
+    }  
+
+    // This will signal the worker thread to start shutting down  
+    SetEvent (g_ServiceStopEvent);  
+
+    break;  
+
+ default:  
+     break;  
+}
+
+}
+The Service Control Handler was registered in your Service Main Entry point. Each service must have a handler to handle control requests from the SCM. The control handler must return within 30 seconds or the SCM will return an error stating that the service is not responding. This is because the handler will be called in the context of the SCM and will hold the SCM until it returns from the handler.
+
+I have only implemented and supported the SERVICE_CONTROL_STOP request. You can handle other requests such as SERVICE_CONTROL_CONTINUE, SERVICE_CONTROL_INTERROGATE, SERVICE_CONTROL_PAUSE, SERVICE_CONTROL_SHUTDOWN and others supported by the Handler or HandlerEx function that can be registered with the RegisterServiceCtrlHandler(Ex) function.
+
+Service Worker Thread
+CPP
+
+DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
+{
+//  Periodically check if the service has been requested to stop
+while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
+{
+/*
+* Perform main service function here
+*/
+
+//  Simulate some work by sleeping  
+    Sleep(3000);  
+}  
+
+return ERROR_SUCCESS;
+
+}
+This sample Service Worker Thread does nothing but sleep and check to see if the service has received a control to stop. Once a stop control has been received the Service Control Handler sets the g_ServiceStopEvent event. The Service Worker Thread breaks and exits. This signals the Service Main routine to return and effectively stop the service.
+
+Installing the Service
+You can install the service from the command prompt by running the following command:
+
+TEXT
+
+C:>sc create "My Sample Service" binPath= C:\SampleService.exe
+A space is required between binPath= and the value[?]. Also, use the full absolute path to the service executable.
+
+You should now see the service in the Windows Services console. From here you can start and stop the service.
+
+Uninstalling the Service
+You can uninstall the service from the command prompt by running the following command:
+
+TEXT
+
+C:>sc delete "My Sample Service"
+History
+11/28/2012: Initial release of article and code.
+11/29/2012: Improved code and fixed one typo in article sample code.
+11/03/2015: Updated details on how to install the service based on user comments.
+License
+This article, along with any associated source code and files, is licensed under The Code Project Open License (CPOL)
+
+by Mohit Arora
+
+Contributor
+
+451k Views
+4.73/ 5
+
+Comments And Discussions (74)
+Sort:
+
+Newest
+Share your thoughts
+
+You need to be signed in to participate in the discussion.Sign in
+
+A
+Anonymous
+
+Sep 4, 2024
+
+•••
+Complete, clear, concise, educational
+0
+0
+Reply
+A
+Anonymous
+
+Sep 4, 2024
+
+•••
+Hi, Mohit. I found your article excellent! (i.e. clear, concise, educational & usefull) Thanks for such a valuable contribution. When used the code for a TCP server (that works fine as a standalone .exe) that attends clients initiating a std::thread (included ) after accepting each connection, I got a "1053 Error" (no timely response to service control) during service start. Checked using Window's proprietary CreateThread() instead and the service started just fine. I run the code as a standalone .exe and works fine in both versions. I moved on digging on the case and found that, if I "literally" block the "possibility" for the thread to be initiated inserting "if (1 == 0)" before "thread t(....)", the service starts with no problem. But inserting "int a = 1; if (a == 0)", it DOES NOT. Finally, inserting "const int a = 1; if (a == 0)" DOES start. A relevant piece is that the control flow never reaches the "thread t(...)" line. Remembe that it is a TCP server that initiates the thread for attending clients just after accepting connections. (when using CreateThread(), the server works just fine) I cleaned up the code leaving just the essentials for studing the case, and the issue remains. I'm compiling the code with g++ 13.1.0 (g++ -o SampleServiceMain.exe SampleServiceMain.cpp -luser32) Any thoughts on what could be the reason for this? Thanks for your help! I'll paste down here the described pice of code. // ADDED NEXT THREAD ENTRY POINT FUNCTION, USING TWO DIFFERENT SIGNATURES DEPENDING ON THREAD INITIATION MECHANISM. // DWORD WINAPI DoSomething(LPVOID lpParam) int DoSomething(LPVOID lpParam) { // just loop for 10 seconds, sleeping most of the time int a = 0; while (a++ < 10) { Sleep(1000); } return 0; } DWORD WINAPI ServiceWorkerThread (LPVOID lpParam) { OutputDebugString(_T("My Sample Service: ServiceWorkerThread: Entry")); // ADDED NEXT LINE. int a = 1; // Periodically check if the service has been requested to stop while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0) { /* * Perform main service function here / // Simulate some work by sleeping Sleep(3000); // ADDED FROM THIS LINE... / * Initiating a thread with Windows's CreateThread() WORKS JUST FINE; * initiating a thread with std::thread class DOES NOT WORK (error 1053). WHY? */ LPVOID param; // Cr
+0
+0
+Reply
+
+Hide reply
+A
+Anonymous
+
+Sep 6, 2024
+
+•••
+Solved my problem. The issue here was the absence of libraries in the working directory. Even when libpath environment variable provides the location of required libraries (among them, libwinpthread-1.dll, needed to support std::thread class usage) -what made it possible for the .exe to run fine as a standalone application- it was necessary for the actual .dlls files to be present in the working directory, along with the .exe file. Hope it helps if someone falls in the same situation. Thanks again for the contribution.
+0
+0
+Reply
+S
+SMDtheone
+
+Jul 19, 2023
+
+•••
+The cleanup tasks (line 108) should look like this:
+CPP
+
+CloseHandle(g_ServiceStopEvent);
+CloseHandle(hThread);
+...
+SMD
+0
+0
+Reply
+S2
+sahil ajmeri 2022
+
+Mar 16, 2023
+
+•••
+I WANT TO OPEN NOTE PAD WITH THIS SERVICE WHILE RUNNING,I HAVE TRIED SOME SOLUTION BUT IT DIDN'T WORK AS I INTENDED. IN ServiceWorkerThread I HAVE ADDED FOLLOWING CODE!!
+CODE
+
+DWORD WINAPI ServiceWorkerThread (LPVOID lpParam)
+{
+// Perform the main task of the service here
+OutputDebugString(_T("Always Ready: ServiceWorkerThread: Start"));
+
+OpenNotepad(); // Open notepad on service start  
+
+while (WaitForSingleObject(g_ServiceStopEvent, 0) != WAIT_OBJECT_0)  
+{  
+    // Perform main service function here  
+    // ...  
+    Sleep(2000); // Simulate some work being done  
+}  
+
+OutputDebugString(_T("Always Ready: ServiceWorkerThread: Stop"));  
+
+return ERROR_SUCCESS;
+
+}
+0
+0
+Reply
+A
+Anonymous
+
+May 14, 2022
+
+•••
+When built the sample with Release 32 bit , Debug 32/64 bit mode it can built successfully, but when using Realsense 64 bit, there are many link error pop up any thought about this? is this expected? thanks
+0
+0
+Reply
+
+Hide reply
+A
+Anonymous
+
+May 14, 2022
+
+•••
+after change the library path to $(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64) the issue is fixed thanks
+0
+0
+Reply
+D
+DBJDBJ
+
+Jan 3, 2022
+
+•••
+I can not see any C++ specific code above? Please advise ...
+0
+0
+Reply
+AN
+Andrey Novik
+
+Jun 1, 2021
+
+•••
+With your help I was able to create a service quick without need to read manuals. Thank you. I appreciate your help.
+0
+0
+Reply
+AN
+Andrey Novik
+
+Jun 1, 2021
+
+•••
+Simple and understandable.
+0
+0
+Reply
+A
+Anonymous
+
+Dec 16, 2020
+
+•••
+CODE
+
+StartServiceCtrlDispatcher returned errorThe thread 0x1520 has exited with code 1063
+This is the message i got.. i dont know what is happening...
+0
+0
+Reply
+
+Hide reply
+BS
+Bram Stolk
+
+Dec 24, 2021
+
+•••
+CODE
+
+ERROR_FAILED_SERVICE_CONTROLLER_CONNECT
+
+1063 (0x427)
+
+The service process could not connect to the service controller.
+0
+0
+Reply
+PB
+Paul Belikian
+
+Jul 5, 2020
+
+•••
+Hello, this is a great sample and I have used it as base for some of my projects. Very good explanation. Does anyone know how to add a description to the service programmatically? All of the snippets and other examples I've seen require a handle to the service while this one doesn't appear to have a way to get that handle. Thanks!
+0
+0
+Reply
+Previous
+Page 1 of 6
+Next
+
+CODEPROJECT
+For Those Who Code
+
+Advertise
+About Us
+Privacy
+Cookies
+Terms Of Service
+Copyright 1999-2025 © CodeProject. All Rights Reserved.
