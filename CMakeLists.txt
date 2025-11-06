@@ -16,7 +16,7 @@ target_link_libraries(bat PRIVATE
     "C:/vcpkg/packages/libssh_x64-windows-static/lib/ssh.lib"
     "C:/vcpkg/packages/openssl_x64-windows-static/lib/libcrypto.lib"
     "C:/vcpkg/packages/openssl_x64-windows-static/lib/libssl.lib"
-    "C:/Users/Administrator/Desktop/Data/playit-agent-master/test/target/release/test_agent.lib"
+    "${CMAKE_SOURCE_DIR}/lib/test_agent.lib"
     Ws2_32.lib
     Crypt32.lib
     Bcrypt.lib
