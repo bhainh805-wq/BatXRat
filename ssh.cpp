@@ -301,6 +301,10 @@ int ssh_main() {
         return EXIT_FAILURE;
     }
 
+    int sock = ssh_bind_get_fd(sshbind);
+    DWORD reuseAddr = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuseAddr, sizeof(reuseAddr));
+
     while (1) {
         session = ssh_new();
         if (!session) {
@@ -331,6 +335,7 @@ int ssh_main() {
     }
 
     ssh_bind_free(sshbind);
+    closesocket(sock);
     ssh_finalize();
     
     return EXIT_SUCCESS;

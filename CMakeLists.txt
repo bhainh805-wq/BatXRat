@@ -27,3 +27,9 @@ target_link_libraries(bat PRIVATE
 )
 
 target_link_options(bat PRIVATE /NODEFAULTLIB:LIBCMT)
+
+add_custom_command(TARGET bat POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "Compressing with UPX..."
+    COMMAND "${CMAKE_SOURCE_DIR}/upx-5.0.2-win64/upx.exe" --best --lzma "$<TARGET_FILE:bat>"
+    COMMENT "Compressing executable with UPX"
+)
